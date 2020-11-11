@@ -1,0 +1,128 @@
+\section*{Flink Memory Management}
+In order to achieve memory optimization, Flink uses off-heap memory.
+This is explained in detail in the JVM. If you are interested, you can
+check it out. Using off-heap memory can reduce the limitation of
+allocated memory (time and space), and at the same time can reduce
+memory GC. Using off-heap memory can greatly reduce the heap memory
+(only the Remaining Heap needs to be allocated), so that the
+TaskManager can be expanded to hundreds of GB of memory is not a
+problem. In the IO operation, the use of off-heap memory can be
+zero-copy, and the use of on-heap memory must be copied at least once.
+It should be noted that off-heap memory is shared between processes.
+
+\subsection*{Memory Usage Classification}
+The basic idea of Flink's memory is to use an abstract memory pool to
+pre-allocate a large amount of memory to increase the proportion of
+reuse. Standardize the size of memory to improve efficiency. Memory is
+mainly divided into the following three situations:
+
+\paragraph{Memory Pool:} 
+The memory management pool is a massive collection composed of many
+Memory Segments. The algorithm applied in FLINK, such as sorting,
+cleaning data, etc., will apply for distribution of them and store
+their serialized data inside. This memory can be reused and allocated.
+Under the normal circumstances, the occupied memory usage of this part
+of the application accounts for the majority of entire memory.
+
+\paragraph{Network Buffer:} 
+Big data data communication will certainly occupy a considerable
+amount of memory. In Flink's network buffer, there is a pre-allocated
+32K buffer, which is similar to the IO buffer in the network cable
+driver. It will be allocated when taskmanager starts. The default
+number is 2K, which can be configured through
+taskmanager.network.numberOfBuffers.
+
+\paragraph{User}
+Memory used by users This part of memory is mainly used for some basic
+data structures (such as taskmanager) for users and some code-related
+memory usage.
+
+\subsection*{Abstract Data Structure of Memory}
+The memory segment of Memory Segment can be considered as a part of
+heap memory in JVM.
+\begin{lstlisting}
+	public abstract class HybridMemorySegment extends MemorySegment {
+
+	}
+\end{lstlisting}
+
+\begin{lstlisting}
+	public abstract class MemorySegment {
+
+	}
+\end{lstlisting}
+
+
+\subsection*{Memory Mapping and Application}
+
+\paragraph{Binary Processing}
+Binary processing is actually a processing method of the following
+serialization, through which a binary data stream can be obtained.
+Then push the data stream to the corresponding operator, and operate
+the data through it, such as Sort, Join, etc.
+
+\paragraph{Memory Mangement of Scala}
+Flink fully supports all Scala data types
+
+\paragraph{Serialization}
+Serialization is actually easy to understand. It is the process of
+converting binary streams and data structures back and forth, or
+encoding and decoding.  Flink implements its own serialization
+framework without using other ready-made frameworks. This also has a
+lot to do with the single data structure of Flink itself. Flink
+obtains type information (TypeInformation) through JAVA's reflection
+mechanism, which mainly contains the following types:
+
+\textbf{BasicTypeInfo:} Any Java basic type (boxed) or String
+
+\textbf{BasicArrayTypeInfo:} Any Java basic type array (boxed) or
+String array
+
+\textbf{WritableTypeInfo:} The implementation class of any Hadoop
+Writable interface.
+
+\textbf{TupleTypeInfo:} Any Flink Tuple type (support Tuple1 to
+Tuple25). Flink tuples are Java Tuple implementations of fixed length
+and fixed type.
+
+\textbf{CaseClassTypeInfo:} Any Scala CaseClass (including Scala
+tuples).
+
+\textbf{PojoTypeInfo:} Any POJO (Java or Scala), for example, all
+member variables of a Java object are either defined by public
+modifiers or have getter/setter methods.
+
+\textbf{GenericTypeInfo:} Any class that cannot match the previous
+types. Flink can serialize basic data types through TypeSerializer.
+For GenericTypeInfo, Kryo is used to achieve serialization.
+
+\subsection*{Memory Management (memory pool)}
+MemoryManager provides two internal classes:%
+
+\begin{itemize}
+	\item{HybridHeapMemoryPool: Byte array is generally used}
+
+	\item{HybridOffHeapMemoryPool: ByteBuffer is generally allocated} 
+\end{itemize}
+
+\section*{Task Memory Manager}
+\begin{center}
+	\begin{tabular}{|l|l|}
+		\hline
+		Config. Option & Description \\
+		\hline
+		taskmanager.memory.size		& Sets the size managed by task memory
+									  manager (sorting, hashing,
+									  caching).  The default is 0. \\
+		\hline
+		taskmanager.memory.size		& Value is less than or equall to 0.
+									  It will be allocated according
+									  to the
+									  taskmanager.memory.fraction
+									  which is 0.7 \\
+		\hline
+		taskmanager.memory.off-heap & The maximimum value of
+									  taskmanager is
+									  taskmanager.heap.size=networkBuffMB-offHeapSize
+	\end{tabular}
+\end{center}
